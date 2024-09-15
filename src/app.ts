@@ -1,11 +1,16 @@
 import express from 'express';
+import multer from 'multer';
+import cors from 'cors';
 import { processCSVData } from './services/csvService';
 import { formatToBRL, validarPrestacoes, validateCNPJ, validateCPF } from './utils/validation';
-import { paginate } from './utils/pagination';
 import { InvalidResult, ValidResult } from './types';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+const upload = multer({ dest: 'uploads/' });
+
+app.use(cors());
 
 app.get('/process-csv', async (req, res) => {
   try {
@@ -43,30 +48,34 @@ app.get('/process-csv', async (req, res) => {
         vlPresta: valorPrestaFormatado,
       });
     });
+
     const sortedResults = onlyValid === 'true' ? validResults : [...validResults, ...invalidResults];
 
-    const pageInt = parseInt(page as string, 10);
-    const pageSizeInt = parseInt(pageSize as string, 10);
-    const paginatedResults = paginate(sortedResults, pageInt, pageSizeInt);
-
-    const totalItems = sortedResults.length;
-    const totalPages = Math.ceil(totalItems / pageSizeInt);
-
     res.json({
-      data: paginatedResults,
-      metadata: {
-        totalItems,
-        totalPages,
-        currentPage: pageInt,
-        pageSize: pageSizeInt,
-      },
+      data: sortedResults,
     });
   } catch (error) {
+    console.error('Erro ao processar CSV:', error);
     res.status(500).json({ error: 'Erro ao processar CSV' });
+  }
+});
+
+
+app.post('/upload', upload.single('file'), async (req, res) => {
+  try {
+    const filePath = req.file?.path;
+    if (filePath) {
+      const data = await processCSVData(filePath);
+      res.json({ data });
+    } else {
+      res.status(400).json({ error: 'Nenhum arquivo enviado.' });
+    }
+  } catch (error) {
+    console.error('Erro ao processar o arquivo:', error);
+    res.status(500).json({ error: 'Erro ao processar o arquivo CSV' });
   }
 });
 
 app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
 });
-
